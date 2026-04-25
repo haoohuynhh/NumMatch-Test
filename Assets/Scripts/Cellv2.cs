@@ -61,7 +61,11 @@ public class Cellv2 : MonoBehaviour
     {
         state = CellState.Normal;
         numberValue = value;
-        if (valueText != null) valueText.text = value.ToString();
+        if (valueText != null) 
+        {
+            valueText.text = value.ToString();
+            valueText.color = new Color(valueText.color.r, valueText.color.g, valueText.color.b, 1f);
+        }
         BoxCollider2D col = GetComponent<BoxCollider2D>();
         if (col != null) col.enabled = true;
     }

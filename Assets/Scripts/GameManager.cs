@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+// using UnityEditor.SceneManagement;
 using UnityEngine;
 
 public class GameManager : MonoBehaviour
@@ -9,8 +10,16 @@ public class GameManager : MonoBehaviour
     public Cellv2 firstSelectedCell;
     public Cellv2 secondSelectedCell;
 
+    [Header("Game State")]
+    [SerializeField] public int currentStage = 1;
+
+    
+
+  
+
     void Awake()
     {
+        
         if (Instance == null) 
         {
             Instance = this;
@@ -23,6 +32,7 @@ public class GameManager : MonoBehaviour
 
     public void OnCellClicked(Cellv2 clickedCell)
     {
+        Debug.Log($"Đang chọn ô tại toạ độ: (X: {clickedCell.gridX}, Y: {clickedCell.gridY}) - Giá trị: {clickedCell.numberValue}");
     
         if (firstSelectedCell != null && secondSelectedCell != null)
         {
@@ -49,11 +59,21 @@ public class GameManager : MonoBehaviour
             // GỌI HÀM KIỂM TRA MATCH Ở ĐÂY
             if (CheckValidMatch(firstSelectedCell, secondSelectedCell))
             {
+                GridManager grid = firstSelectedCell.GetComponentInParent<GridManager>();
+
                 // Nếu ăn thành công -> Set Matched cả 2 ô
                 firstSelectedCell.SetMatched(firstSelectedCell.numberValue);
                 secondSelectedCell.SetMatched(secondSelectedCell.numberValue);
 
                 ResetSelection();
+
+                if (grid != null)
+                {
+                    grid.CheckAndClearMatchedRows();
+                }
+
+                // KIỂM TRA THẮNG / THUA SAU KHI ĂN
+                CheckGameStatus();
             }
             else
             {
@@ -80,12 +100,12 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    private bool CheckValidMatch(Cellv2 cell1, Cellv2 cell2)
+    private bool CheckValidMatch(Cellv2 cell1, Cellv2 cell2, bool silent = false)
     {
         // 1. Kiểm tra giá trị: phải giống nhau hoặc tổng bằng 10
         if (cell1.numberValue != cell2.numberValue && cell1.numberValue + cell2.numberValue != 10)
         {
-            Debug.Log("Sai! Giá trị không giống nhau và tổng không bằng 10.");
+            if (!silent) Debug.Log("Sai! Giá trị không giống nhau và tổng không bằng 10.");
             return false;
         }
 
@@ -130,7 +150,7 @@ public class GameManager : MonoBehaviour
 
             if (!isBlocked)
             {
-                Debug.Log("Chính xác! Ăn thành công theo đường thẳng (ngang/dọc/chéo).");
+                if (!silent) Debug.Log("Chính xác! Ăn thành công theo đường thẳng (ngang/dọc/chéo).");
                 return true;
             }
         }
@@ -152,12 +172,87 @@ public class GameManager : MonoBehaviour
             
             if (cellInBetween != null && !cellInBetween.IsEmpty() && !cellInBetween.isMatched)
             {
-                Debug.Log("Sai! Đường đi bị chặn bởi một số khác.");
+                if (!silent) Debug.Log("Sai! Đường đi bị chặn bởi một số khác.");
                 return false;
             }
         }
 
-        Debug.Log("Chính xác! Ăn thành công theo luật nối đuôi.");
+        if (!silent) Debug.Log("Chính xác! Ăn thành công theo luật nối đuôi.");
         return true;
+    }
+
+    public void CheckGameStatus()
+    {
+        GridManager gridManager = FindObjectOfType<GridManager>();
+        if (gridManager == null) return;
+
+        bool isCleared = true;
+        List<Cellv2> activeCells = new List<Cellv2>();
+
+        // Lấy tất cả các ô còn số
+        for (int y = 0; y < gridManager.rows; y++)
+        {
+            for (int x = 0; x < gridManager.columns; x++)
+            {
+                Cellv2 cell = gridManager.GetCell(x, y);
+                if (cell != null && !cell.IsEmpty() && !cell.isMatched)
+                {
+                    isCleared = false;
+                    activeCells.Add(cell);
+                }
+            }
+        }
+
+        // Win: Nếu bảng không còn số nào
+        if (isCleared)
+        {
+            Debug.Log("CHÚC MỪNG! BẠN ĐÃ CLEAR BẢNG!");
+            currentStage++;
+            ResetBoard();
+            return;
+        }
+
+        // Thua: Nếu hết lượt thêm số VÀ không còn cặp nào có thể match
+        if (gridManager.addNumber <= 0)
+        {
+            bool hasMatch = false;
+            for (int i = 0; i < activeCells.Count; i++)
+            {
+                for (int j = i + 1; j < activeCells.Count; j++)
+                {
+                    if (CheckValidMatch(activeCells[i], activeCells[j], true))
+                    {
+                        hasMatch = true;
+                        break;
+                    }
+                }
+                if (hasMatch) break;
+            }
+
+            if (!hasMatch)
+            {
+                Debug.Log("THUA CUỘC! KHÔNG THỂ MATCH VÀ HẾT LƯỢT THÊM SỐ!");
+                ResetBoard();
+            }
+        }
+    }
+
+    private void ResetBoard()
+    {
+        GridManager gridManager = FindObjectOfType<GridManager>();
+        BoardGeneratorv2 generator = FindObjectOfType<BoardGeneratorv2>();
+
+        if (gridManager != null && generator != null)
+        {
+            // Xóa rác cũ
+            foreach (Transform child in gridManager.gridContainer)
+            {
+                Destroy(child.gameObject);
+            }
+            gridManager.addNumber = 6;
+            
+            // Gọi sinh bảng mới
+            generator.GenerateGrid();
+        }
     }
 }
