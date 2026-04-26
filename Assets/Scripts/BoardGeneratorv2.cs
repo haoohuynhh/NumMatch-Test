@@ -50,6 +50,7 @@ public class BoardGeneratorv2 : MonoBehaviour
         numberPool = GenerateBoardWithExactPairs(numberPool, targetPairs, columns);
 
         // Tạo grid
+        List<Cellv2> initialCells = new List<Cellv2>();
         for (int y = 0; y < totalRows; y++)
         {
             Transform rowContainer = new GameObject($"Row_{y}").transform;
@@ -66,11 +67,22 @@ public class BoardGeneratorv2 : MonoBehaviour
 
                 newCell.Setup(x, y, cellValue);
                 gridManager.AddCell(index, newCell);
+                
+                if (cellValue != 0)
+                {
+                    initialCells.Add(newCell);
+                }
             }
         }
 
         gridManager.SetupBoardBackground();
         gridManager.CenterGrid();
+
+        // Rải Gem lên board ban đầu (ép buộc ra đủ số loại gem hiện có)
+        if (GameManager.Instance != null && initialCells.Count > 0)
+        {
+            GameManager.Instance.SpawnGemsOnCells(initialCells, true);
+        }
     }
 
     // ==================== TẠO MẢNG NGẪU NHIÊN 1-9 ====================

@@ -7,11 +7,35 @@ public class Cellv2 : MonoBehaviour
     public SpriteRenderer background;
     public TMP_Text valueText;
 
+    [Header("Gem Graphics")]
+    public Sprite orangeGemSprite;
+    public Sprite purpleGemSprite;
+    public Sprite normalSprite;
+
     [Header("Data")]
     public int gridX;
     public int gridY;
     public int numberValue;
     public CellState state;
+    public GemType currentGemType = GemType.None;
+
+    // Dùng chung background để hiển thị cả normalSprite và gem sprite
+    public void SetGem(GemType gemType)
+    {
+        currentGemType = gemType;
+
+        if (background == null || state == CellState.Empty) return;
+
+        background.gameObject.SetActive(true);
+        background.color = Color.white;
+
+        if (gemType == GemType.Orange && orangeGemSprite != null)
+            background.sprite = orangeGemSprite;
+        else if (gemType == GemType.Purple && purpleGemSprite != null)
+            background.sprite = purpleGemSprite;
+        else if (normalSprite != null)
+            background.sprite = normalSprite;
+    }
 
     public void Setup(int x, int y, int value)
     {
@@ -32,6 +56,7 @@ public class Cellv2 : MonoBehaviour
     {
         return state == CellState.Empty;
     }
+
     public bool isMatched
     {
         get { return state == CellState.matched; }
@@ -41,6 +66,7 @@ public class Cellv2 : MonoBehaviour
     {
         state = CellState.matched;
         numberValue = value;
+        background.sprite = normalSprite;
         valueText.color = new Color(valueText.color.r, valueText.color.g,
                             valueText.color.b, 0.30f);
         BoxCollider2D col = GetComponent<BoxCollider2D>();
@@ -51,7 +77,11 @@ public class Cellv2 : MonoBehaviour
     {
         state = CellState.Empty;
         numberValue = 0;
+        currentGemType = GemType.None;
         if (valueText != null) valueText.text = "";
+        // Ẩn background khi ô trống
+       background.sprite = normalSprite;
+        
         BoxCollider2D col = GetComponent<BoxCollider2D>();
         if (col != null) col.enabled = false;
     }
@@ -61,6 +91,14 @@ public class Cellv2 : MonoBehaviour
     {
         state = CellState.Normal;
         numberValue = value;
+        currentGemType = GemType.None;
+        // Hiện background với normalSprite mặc định
+        if (background != null)
+        {
+            background.gameObject.SetActive(true);
+            background.color = Color.white;
+            if (normalSprite != null) background.sprite = normalSprite;
+        }
         if (valueText != null) 
         {
             valueText.text = value.ToString();
@@ -70,22 +108,13 @@ public class Cellv2 : MonoBehaviour
         if (col != null) col.enabled = true;
     }
 
-    // public void SelectWrong()
-    // {
-    //     state = CellState.matching;
-    //     if (background != null)
-    //     {
-    //         background.color = new Color(1f, 0.7f, 0.7f); // Đổi sang màu đỏ nhạt (Highlight sai)
-    //     }
-    // }
-
     public void Select()
     {
         state = CellState.matching;
         if (background != null)
         {
             background.color = new Color(0.7f, 1f, 0.7f); 
-    }
+        }
     }
 
     public void Deselect()

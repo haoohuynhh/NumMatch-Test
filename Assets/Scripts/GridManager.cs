@@ -193,6 +193,8 @@ public class GridManager : MonoBehaviour
 
         // 2. Rải các số này vào các ô trống tiếp theo trên bảng
         int copyIndex = 0;
+        List<Cellv2> newCells = new List<Cellv2>();
+
         for (int y = 0; y < rows; y++)
         {
             for (int x = 0; x < columns; x++)
@@ -202,14 +204,21 @@ public class GridManager : MonoBehaviour
                 {
                     // Hàm FillData sẽ tự kích hoạt lại ô, chuyển state về Normal và đổi Text
                     cell.FillData(numbersToCopy[copyIndex]);
+                    newCells.Add(cell);
                     copyIndex++;
 
                     if (copyIndex >= numbersToCopy.Count)
                     {
-                        return; // Đã chép xong toàn bộ
+                        break; // Đã chép xong toàn bộ
                     }
                 }
             }
+            if (copyIndex >= numbersToCopy.Count) break;
+        }
+
+        if (GameManager.Instance != null && newCells.Count > 0)
+        {
+            GameManager.Instance.SpawnGemsOnCells(newCells);
         }
 
         if (copyIndex < numbersToCopy.Count)

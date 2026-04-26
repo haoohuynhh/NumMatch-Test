@@ -13,7 +13,11 @@ public class GameManager : MonoBehaviour
     [Header("Game State")]
     [SerializeField] public int currentStage = 1;
 
-    
+    [Header("Gem Goals")]
+    public int targetOrange = 5;
+    public int targetPurple = 5;
+    public int collectedOrange = 0;
+    public int collectedPurple = 0;
 
   
 
@@ -64,6 +68,10 @@ public class GameManager : MonoBehaviour
                 // Nếu ăn thành công -> Set Matched cả 2 ô
                 firstSelectedCell.SetMatched(firstSelectedCell.numberValue);
                 secondSelectedCell.SetMatched(secondSelectedCell.numberValue);
+
+                // Gom Gem nếu có
+                CollectGem(firstSelectedCell);
+                CollectGem(secondSelectedCell);
 
                 ResetSelection();
 
@@ -253,6 +261,134 @@ public class GameManager : MonoBehaviour
             
             // Gọi sinh bảng mới
             generator.GenerateGrid();
+        }
+    }
+
+    private void CollectGem(Cellv2 cell)
+    {
+        if (cell.currentGemType == GemType.Orange)
+        {
+            collectedOrange++;
+            Debug.Log($"Đã thu thập 1 viên Cam! ({collectedOrange}/{targetOrange})");
+        }
+        else if (cell.currentGemType == GemType.Purple)
+        {
+            collectedPurple++;
+            Debug.Log($"Đã thu thập 1 viên Tím! ({collectedPurple}/{targetPurple})");
+        }
+    }
+
+    public void SpawnGemsOnCells(List<Cellv2> targetCells, bool isInitialBoard = false)
+    {
+        int z = 0;
+        List<GemType> availableTypes = new List<GemType>();
+        
+        if (collectedOrange < targetOrange) 
+        {
+            z++;
+            availableTypes.Add(GemType.Orange);
+        }
+        if (collectedPurple < targetPurple) 
+        {
+            z++;
+            availableTypes.Add(GemType.Purple);
+        }
+
+        if (z == 0) return; // Đã gom đủ gem
+
+        List<int> spawnedGemValues = new List<int>();
+
+        if (isInitialBoard)
+        {
+            // MẶC ĐỊNH SPAWN ĐÚNG Z LOẠI GEM LÚC ĐẦU GAME
+            int spawned = 0;
+            
+            // Xáo trộn mảng để chọn ô ngẫu nhiên
+            List<Cellv2> shuffled = new List<Cellv2>(targetCells);
+            for (int i = 0; i < shuffled.Count; i++)
+            {
+                int r = Random.Range(i, shuffled.Count);
+                Cellv2 temp = shuffled[i];
+                shuffled[i] = shuffled[r];
+                shuffled[r] = temp;
+            }
+
+            foreach (Cellv2 cell in shuffled)
+            {
+                if (spawned >= z) break;
+                if (cell.IsEmpty() || cell.isMatched || cell.currentGemType != GemType.None) continue;
+                
+                int val = cell.numberValue;
+                bool canSpawn = true;
+                foreach (int spawnedVal in spawnedGemValues)
+                {
+                    if (val == spawnedVal || val + spawnedVal == 10)
+                    {
+                        canSpawn = false;
+                        break;
+                    }
+                }
+                
+                if (canSpawn && availableTypes.Count > 0)
+                {
+                    GemType type = availableTypes[Random.Range(0, availableTypes.Count)];
+                    cell.SetGem(type);
+                    spawnedGemValues.Add(val);
+                    spawned++;
+                    availableTypes.Remove(type); // Tránh trùng màu
+                }
+            }
+            return;
+        }
+
+        // SPAWN DỰA TRÊN TỈ LỆ VÀ BẢO HIỂM LÚC THÊM SỐ
+        int gemsSpawned = 0;
+        int yLimit = Mathf.CeilToInt((targetCells.Count + 1) / 2f);
+        int currentY = 0;
+
+        for (int i = 0; i < targetCells.Count; i++)
+        {
+            if (gemsSpawned >= z) break;
+            
+            Cellv2 cell = targetCells[i];
+            if (cell.IsEmpty() || cell.isMatched || cell.currentGemType != GemType.None) continue;
+
+            float rand = Random.Range(0f, 100f);
+            bool triggerGem = rand <= 7f || currentY >= yLimit - 1; // 7% tỉ lệ ra ngẫu nhiên hoặc chạm Pity
+
+            if (triggerGem)
+            {
+                int val = cell.numberValue;
+                bool canSpawn = true;
+                
+                // Kiểm tra xem gem chuẩn bị sinh ra có bị match với gem nào đã đẻ ra cùng đợt không
+                foreach (int spawnedVal in spawnedGemValues)
+                {
+                    if (val == spawnedVal || val + spawnedVal == 10)
+                    {
+                        canSpawn = false;
+                        break;
+                    }
+                }
+
+                if (canSpawn && availableTypes.Count > 0)
+                {
+                    GemType type = availableTypes[Random.Range(0, availableTypes.Count)];
+                    cell.SetGem(type);
+                    spawnedGemValues.Add(val);
+                    gemsSpawned++;
+                    currentY = 0;
+                    availableTypes.Remove(type); // Tránh rải 2 viên cùng màu trong 1 mẻ nếu không cần thiết
+                }
+                else
+                {
+                    currentY++;
+                }
+            }
+            else
+            {
+                currentY++;
+            }
         }
     }
 }

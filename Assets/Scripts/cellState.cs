@@ -5,3 +5,10 @@ public enum CellState
     matched,
     Empty
 }
+
+public enum GemType
+{
+    None,
+    Orange,
+    Purple
+}
