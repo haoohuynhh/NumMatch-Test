@@ -39,14 +39,14 @@ public class BoardGeneratorv2 : MonoBehaviour
         int totalRows = gridManager.rows;
         int initialFilledCount = columns * initialFilledRows;
 
-        // Tạo pool số cân bằng (đủ 1-9 và phân bố đều)
-        int[] numberPool = CreateBalancedNumberPool(initialFilledCount);
+        // Tạo mảng ngẫu nhiên hoàn toàn (không còn cân bằng 1-9)
+        int[] numberPool = RandomArray(initialFilledCount);
 
         // Lấy stage hiện tại
         int currentStage = GameManager.Instance != null ? GameManager.Instance.currentStage : 1;
         int targetPairs = GetTargetPairs(currentStage);
 
-        // Sinh board với đúng số cặp yêu cầu
+        // Sinh board với đúng số cặp yêu cầu bằng logic mới
         numberPool = GenerateBoardWithExactPairs(numberPool, targetPairs, columns);
 
         // Tạo grid
@@ -73,165 +73,194 @@ public class BoardGeneratorv2 : MonoBehaviour
         gridManager.CenterGrid();
     }
 
-    // ==================== TẠO POOL SỐ CÂN BẰNG (1-9 đều) ====================
-    private int[] CreateBalancedNumberPool(int total)
+    // ==================== TẠO MẢNG NGẪU NHIÊN 1-9 ====================
+    private int[] RandomArray(int length)
     {
-        int[] pool = new int[total];
-        int baseCount = total / 9;
-        int remainder = total % 9;
-
-        int[] digitCounts = new int[9];
-        for (int i = 0; i < 9; i++)
-            digitCounts[i] = baseCount;
-
-        // Rải phần dư ngẫu nhiên
-        int[] indices = { 0, 1, 2, 3, 4, 5, 6, 7, 8 };
-        ShuffleArray(indices);
-        for (int i = 0; i < remainder; i++)
-            digitCounts[indices[i]]++;
-
-        // Đổ vào pool
-        int poolIndex = 0;
-        for (int digit = 0; digit < 9; digit++)
+        int[] arr = new int[length];
+        for (int i = 0; i < length; i++)
         {
-            for (int count = 0; count < digitCounts[digit]; count++)
-            {
-                pool[poolIndex++] = digit + 1;
-            }
+            arr[i] = Random.Range(1, 10); // Ngẫu nhiên 1 đến 9
         }
-
-        return pool;
+        return arr;
     }
 
-    // ==================== SINH BOARD CÓ ĐÚNG SỐ CẶP ====================
+    // ─── BƯỚC 1: TÍNH DANH SÁCH Ô LÂN CẬN (CHỈ NGANG, DỌC, NỐI ĐUÔI) ───
+    private int[][] _neighbors;
+
+    private int[][] GetNeighbors(int rows, int columns)
+    {
+        if (_neighbors != null) return _neighbors;
+        int size = rows * columns;
+        _neighbors = new int[size][];
+        
+        for (int i = 0; i < size; i++)
+        {
+            List<int> neighbors = new List<int>();
+            int r = i / columns;
+            int c = i % columns;
+
+            // Duyệt 8 hướng kề và chéo
+            for (int dr = -1; dr <= 1; dr++)
+            {
+                for (int dc = -1; dc <= 1; dc++)
+                {
+                    if (dr == 0 && dc == 0) continue; // Bỏ qua chính nó
+                    
+                    int nr = r + dr;
+                    int nc = c + dc;
+                    
+                    // Chỉ lấy nếu nằm trong biên của ma trận, KHÔNG wrap-around
+                    if (nr >= 0 && nr < rows && nc >= 0 && nc < columns)
+                    {
+                        neighbors.Add(nr * columns + nc);
+                    }
+                }
+            }
+
+            // Bổ sung luật nối đuôi (wrap-around) ngang:
+            // Ô cuối cùng của hàng này kề với ô đầu tiên của hàng kế tiếp
+            if (c == columns - 1 && i + 1 < size)
+            {
+                neighbors.Add(i + 1);
+            }
+            // Khứ hồi: Ô đầu tiên của hàng này kề với ô cuối cùng của hàng trước
+            if (c == 0 && i - 1 >= 0)
+            {
+                neighbors.Add(i - 1);
+            }
+
+            _neighbors[i] = neighbors.ToArray();
+        }
+        return _neighbors;
+    }
+
+    // ─── BƯỚC 2: HÀM KIỂM TRA VI PHẠM ───
+    private bool IsViolation(int a, int b)
+    {
+        return a == b || a + b == 10;
+    }
+
+    private int CountViolations(int[] arr, int[][] neighbors)
+    {
+        int count = 0;
+        for (int i = 0; i < arr.Length; i++)
+        {
+            foreach (int j in neighbors[i])
+            {
+                // Chỉ xét j > i để không đếm trùng lặp
+                if (j > i && IsViolation(arr[i], arr[j]))
+                {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    private List<(int, int)> GetViolationPairs(int[] arr, int[][] neighbors)
+    {
+        List<(int, int)> pairs = new List<(int, int)>();
+        for (int i = 0; i < arr.Length; i++)
+        {
+            foreach (int j in neighbors[i])
+            {
+                if (j > i && IsViolation(arr[i], arr[j]))
+                {
+                    pairs.Add((i, j));
+                }
+            }
+        }
+        return pairs;
+    }
+
+    // ─── BƯỚC 4: THUẬT TOÁN HILL-CLIMBING CHÍNH (CÓ RANDOM RESTART) ───
     private int[] GenerateBoardWithExactPairs(int[] pool, int targetPairs, int columns)
     {
-        int[] board = (int[])pool.Clone();
-        int maxAttempts = 5000;
-        int[] bestBoard = (int[])board.Clone();
-        int bestDiff = int.MaxValue;
+        int rows = pool.Length / columns;
+        int[][] neighbors = GetNeighbors(rows, columns);
+        
+        int[] arr = (int[])pool.Clone();
+        
+        int violations = CountViolations(arr, neighbors);
+        int iter = 0;
+        int maxIter = 200000;
+        int restartEvery = 5000;
 
-        for (int attempt = 0; attempt < maxAttempts; attempt++)
+        while (violations != targetPairs && iter < maxIter)
         {
-            ShuffleArray(board);
+            iter++;
 
-            int count = CountPairs(board, columns, out _);
-
-            if (count == targetPairs)
-                return board;
-
-            int diff = Mathf.Abs(count - targetPairs);
-            if (diff < bestDiff)
+            List<(int, int)> pairs = GetViolationPairs(arr, neighbors);
+            
+            int target;
+            if (pairs.Count == 0) 
             {
-                bestDiff = diff;
-                bestBoard = (int[])board.Clone();
-            }
-
-            // Nếu chỉ chênh 1 cặp thì thử tinh chỉnh
-            if (diff == 1)
-            {
-                if (TryRefineToExactPairs(board, targetPairs, columns, 400))
-                    return board;
-            }
-        }
-
-        Debug.LogWarning($"Không tìm được chính xác {targetPairs} cặp. Sử dụng cấu hình gần nhất (chênh {bestDiff}).");
-        return bestBoard;
-    }
-
-    // ==================== ĐẾM SỐ CẶP (ĐÃ XỬ LÝ ĐẦY ĐỦ CHÉO) ====================
-    private int CountPairs(int[] board, int columns, out List<(int, int)> nonOverlappingPairs)
-    {
-        bool[] used = new bool[board.Length];
-        nonOverlappingPairs = new List<(int, int)>();
-        int matchCount = 0;
-
-        for (int i = 0; i < board.Length; i++)
-        {
-            if (used[i] || board[i] == 0) continue;
-
-            // Ưu tiên thứ tự: Ngang → Dọc → Chéo phải → Chéo trái
-            if (TryMatch(i, i + 1, board, columns, used, nonOverlappingPairs, ref matchCount)) continue;
-            if (TryMatch(i, i + columns, board, columns, used, nonOverlappingPairs, ref matchCount)) continue;
-            if (TryMatch(i, i + columns + 1, board, columns, used, nonOverlappingPairs, ref matchCount)) continue;
-            if (TryMatch(i, i + columns - 1, board, columns, used, nonOverlappingPairs, ref matchCount)) continue;
-        }
-
-        return matchCount;
-    }
-
-    private bool TryMatch(int a, int b, int[] board, int columns, bool[] used, List<(int, int)> pairs, ref int count)
-    {
-        if (b < 0 || b >= board.Length || used[a] || used[b]) return false;
-        if (!IsValidDirection(a, b, columns)) return false;
-
-        if (board[a] == board[b] || board[a] + board[b] == 10)
-        {
-            used[a] = true;
-            used[b] = true;
-            pairs.Add((a, b));
-            count++;
-            return true;
-        }
-        return false;
-    }
-
-    private bool IsValidDirection(int a, int b, int columns)
-    {
-        int diff = Mathf.Abs(a - b);
-        return diff == 1 || diff == columns || diff == columns + 1 || diff == columns - 1;
-    }
-
-    // ==================== TINH CHỈNH NHẸ KHI CHÊNH 1 CẶP ====================
-    private bool TryRefineToExactPairs(int[] board, int target, int columns, int maxRefine = 400)
-    {
-        for (int i = 0; i < maxRefine; i++)
-        {
-            int count = CountPairs(board, columns, out var pairs);
-
-            if (count == target) return true;
-
-            if (count < target)
-            {
-                // Thiếu cặp → swap ngẫu nhiên
-                int idx1 = Random.Range(0, board.Length);
-                int idx2 = Random.Range(0, board.Length);
-                Swap(board, idx1, idx2);
+                // Nếu hiện tại = 0 cặp, ép buộc chọn 1 ô ngẫu nhiên để phá
+                target = Random.Range(0, arr.Length);
             }
             else
             {
-                // Dư cặp → ưu tiên phá một cặp đang có
-                if (pairs.Count > 0)
+                // Chọn ngẫu nhiên 1 cặp vi phạm để cố gắng sửa
+                var p = pairs[Random.Range(0, pairs.Count)];
+                target = Random.value < 0.5f ? p.Item1 : p.Item2;
+            }
+
+            int oldValue = arr[target];
+            int[] bestArr = (int[])arr.Clone();
+            int bestDiff = Mathf.Abs(violations - targetPairs);
+
+            // Thử tất cả giá trị 1-9 cho ô target
+            for (int v = 1; v <= 9; v++)
+            {
+                if (v == oldValue) continue; // Bỏ qua giá trị cũ
+                
+                arr[target] = v; // Gán thử giá trị mới
+                
+                int nv = CountViolations(arr, neighbors);
+                int diff = Mathf.Abs(nv - targetPairs);
+                
+                if (diff < bestDiff)
                 {
-                    var p = pairs[Random.Range(0, pairs.Count)];
-                    int idx1 = Random.value < 0.5f ? p.Item1 : p.Item2;
-                    int idx2 = Random.Range(0, board.Length);
-                    if (idx1 != idx2) Swap(board, idx1, idx2);
-                }
-                else
-                {
-                    Swap(board, Random.Range(0, board.Length), Random.Range(0, board.Length));
+                    bestDiff = diff;
+                    bestArr = (int[])arr.Clone();
                 }
             }
-        }
-        return false;
-    }
 
-    private void Swap(int[] arr, int a, int b)
-    {
-        if (a != b)
+            // Cập nhật trạng thái tốt nhất
+            arr = bestArr;
+            violations = CountViolations(arr, neighbors);
+
+            if (violations == targetPairs) break;
+
+            // --- Random Restart: Tránh kẹt ở đỉnh cục bộ ---
+            if (iter % restartEvery == 0)
+            {
+                arr = RandomArray(arr.Length);
+                violations = CountViolations(arr, neighbors);
+            }
+        }
+
+        if (violations != targetPairs)
         {
-            (arr[a], arr[b]) = (arr[b], arr[a]);
+            Debug.LogWarning($"Không thể đạt chính xác {targetPairs} cặp sau {maxIter} vòng lặp. Hiện tại: {violations}");
         }
+        else
+        {
+            Debug.Log($"[Hill-Climbing] Đạt {violations} cặp thành công sau {iter} vòng lặp.");
+        }
+
+        return arr;
     }
 
-    // ==================== SHUFFLE MẢNG ====================
+    // ─── SHUFFLE MẢNG (FISHER-YATES) ───
     private void ShuffleArray(int[] array)
     {
         for (int i = array.Length - 1; i > 0; i--)
         {
             int j = Random.Range(0, i + 1);
-            (array[i], array[j]) = (array[j], array[i]);
+            int temp = array[i];
+            array[i] = array[j];
+            array[j] = temp;
         }
     }
 }
