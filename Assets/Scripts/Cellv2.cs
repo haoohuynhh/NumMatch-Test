@@ -1,16 +1,26 @@
 using UnityEngine;
-using TMPro;
 
 public class Cellv2 : MonoBehaviour
 {
     [Header("UI References")]
     public SpriteRenderer background;
-    public TMP_Text valueText;
 
     [Header("Gem Graphics")]
     public Sprite orangeGemSprite;
     public Sprite purpleGemSprite;
     public Sprite normalSprite;
+
+    [Header("Number Sprites")]
+    public SpriteRenderer numberSprite;
+    public Sprite number1;
+    public Sprite number2;
+    public Sprite number3;
+    public Sprite number4;
+    public Sprite number5;
+    public Sprite number6;
+    public Sprite number7;
+    public Sprite number8;
+    public Sprite number9;
 
     [Header("Data")]
     public int gridX;
@@ -19,6 +29,39 @@ public class Cellv2 : MonoBehaviour
     public CellState state;
     public GemType currentGemType = GemType.None;
 
+    // ── Scroll guard ────────────────────────────────────────────
+    private DragScroll _dragScroll;
+
+    // Lấy sprite số tương ứng với value 1-9
+    private Sprite GetNumberSprite(int value)
+    {
+        switch (value)
+        {
+            case 1: return number1;
+            case 2: return number2;
+            case 3: return number3;
+            case 4: return number4;
+            case 5: return number5;
+            case 6: return number6;
+            case 7: return number7;
+            case 8: return number8;
+            case 9: return number9;
+            default: return null;
+        }
+    }
+
+    void Awake()
+    {
+        // Đảm bảo numberSprite ẩn từ đầu, FillData sẽ bật lại
+        if (numberSprite != null) numberSprite.gameObject.SetActive(false);
+    }
+
+    void Start()
+    {
+        // Tìm DragScroll trong scene một lần — có thể ghi đè qua Inspector nếu muốn
+        _dragScroll = FindObjectOfType<DragScroll>();
+    }
+
     // Dùng chung background để hiển thị cả normalSprite và gem sprite
     public void SetGem(GemType gemType)
     {
@@ -26,7 +69,6 @@ public class Cellv2 : MonoBehaviour
 
         if (background == null || state == CellState.Empty) return;
 
-        background.gameObject.SetActive(true);
         background.color = Color.white;
 
         if (gemType == GemType.Orange && orangeGemSprite != null)
@@ -41,15 +83,11 @@ public class Cellv2 : MonoBehaviour
     {
         gridX = x;
         gridY = y;
-        
+
         if (value == 0)
-        {
             SetEmpty();
-        }
         else
-        {
             FillData(value);
-        }
     }
 
     public bool IsEmpty()
@@ -66,9 +104,9 @@ public class Cellv2 : MonoBehaviour
     {
         state = CellState.matched;
         numberValue = value;
-        background.sprite = normalSprite;
-        valueText.color = new Color(valueText.color.r, valueText.color.g,
-                            valueText.color.b, 0.30f);
+        // Đổi về normalSprite, làm mờ sprite số
+        if (background != null) background.sprite = normalSprite;
+        if (numberSprite != null) numberSprite.color = new Color(0f, 0f, 0f, 0.30f);
         BoxCollider2D col = GetComponent<BoxCollider2D>();
         if (col != null) col.enabled = false;
     }
@@ -78,10 +116,14 @@ public class Cellv2 : MonoBehaviour
         state = CellState.Empty;
         numberValue = 0;
         currentGemType = GemType.None;
-        if (valueText != null) valueText.text = "";
-        // Ẩn background khi ô trống
-       background.sprite = normalSprite;
-        
+        // Ẩn tất cả
+        if (background != null) background.sprite = normalSprite;
+        if (numberSprite != null)
+        {
+            numberSprite.sprite = null;
+            numberSprite.color = Color.white;
+            numberSprite.gameObject.SetActive(false);
+        }
         BoxCollider2D col = GetComponent<BoxCollider2D>();
         if (col != null) col.enabled = false;
     }
@@ -92,18 +134,27 @@ public class Cellv2 : MonoBehaviour
         state = CellState.Normal;
         numberValue = value;
         currentGemType = GemType.None;
+
         // Hiện background với normalSprite mặc định
         if (background != null)
         {
-            background.gameObject.SetActive(true);
             background.color = Color.white;
             if (normalSprite != null) background.sprite = normalSprite;
         }
-        if (valueText != null) 
+
+        // Luôn bật và gán sprite số (không cần check null để tránh bỏ sót)
+        if (numberSprite != null)
         {
-            valueText.text = value.ToString();
-            valueText.color = new Color(valueText.color.r, valueText.color.g, valueText.color.b, 1f);
+            numberSprite.gameObject.SetActive(true); // << Bật lên dù prefab đang inactive
+            
+            numberSprite.sprite = GetNumberSprite(value);
+            numberSprite.color = Color.black;
         }
+        else
+        {
+            Debug.LogWarning($"[Cellv2] numberSprite chưa được gán trên prefab! Cell ({gridX},{gridY})");
+        }
+
         BoxCollider2D col = GetComponent<BoxCollider2D>();
         if (col != null) col.enabled = true;
     }
@@ -112,35 +163,27 @@ public class Cellv2 : MonoBehaviour
     {
         state = CellState.matching;
         if (background != null)
-        {
-            background.color = new Color(0.7f, 1f, 0.7f); 
-        }
+            background.color = new Color(0.7f, 1f, 0.7f);
     }
 
     public void Deselect()
     {
         if (state == CellState.matching)
-        {
             state = CellState.Normal;
-        }
-        
+
         if (background != null)
-        {
-            background.color = Color.white; 
-        }
+            background.color = Color.white;
     }
 
-    private void OnMouseDown()
+   
+    private void OnMouseUp()
     {
         if (IsEmpty()) return;
-        
+        if (_dragScroll != null && _dragScroll.IsDragScrolling) return; // đang scroll → bỏ qua
+
         if (GameManager.Instance != null)
-        {
             GameManager.Instance.OnCellClicked(this);
-        }
         else
-        {
             Debug.LogError("Chưa có GameManager trong Scene!");
-        }
     }
 }

@@ -12,7 +12,8 @@ public class GridManager : MonoBehaviour
     [Header("References")]
     public Transform gridContainer; 
     public Transform boardBackground; 
-    public float padding = 0.5f;      
+    public float padding = 0.5f;
+    public BoardGeneratorv2 boardGenerator; // Dùng để lấy cellPrefab, kéo BoardGeneratorv2 vào
 
     // Quản lý mảng 1 chiều chứa các ô
     public Cellv2[] board;
@@ -167,69 +168,107 @@ public class GridManager : MonoBehaviour
 
     public void CopyAndAppendRemainingNumbers()
     {
-        List<int> numbersToCopy = new List<int>();
-
-        if( addNumber <= 0)
+        if (addNumber <= 0)
         {
             Debug.Log("Het Luot Chon!"); return;
         }
 
-        // 1. Thu thập các số chưa bị loại (từ trên xuống dưới, trái qua phải)
+        // 1. Thu thập các số còn tồn tại trên bảng
+        List<Cellv2> newCells = new List<Cellv2>();
+        List<int> numbersToCopy = new List<int>();
         for (int y = 0; y < rows; y++)
-        {
             for (int x = 0; x < columns; x++)
             {
                 Cellv2 cell = GetCell(x, y);
                 if (cell != null && !cell.IsEmpty() && !cell.isMatched)
-                {
                     numbersToCopy.Add(cell.numberValue);
-                }
             }
-        }
-        addNumber--; 
-        
 
+        addNumber--;
         if (numbersToCopy.Count == 0) return;
 
-        // 2. Rải các số này vào các ô trống tiếp theo trên bảng
-        int copyIndex = 0;
-        List<Cellv2> newCells = new List<Cellv2>();
-
+        // 2. Đếm số ô trống hiện có
+        int emptySlots = 0;
         for (int y = 0; y < rows; y++)
-        {
             for (int x = 0; x < columns; x++)
+            {
+                Cellv2 cell = GetCell(x, y);
+                if (cell != null && cell.IsEmpty()) emptySlots++;
+            }
+
+        // 3. Nếu không đủ chỗ, tính trước số row cần thêm và tạo ngay một lúc
+        int deficit = numbersToCopy.Count - emptySlots;
+        if (deficit > 0)
+        {
+            int rowsToAdd = Mathf.CeilToInt((float)deficit / columns);
+            for (int i = 0; i < rowsToAdd; i++)
+            {
+                List<Cellv2> created = AddNewRow();
+                if (created.Count == 0) break; // Dừng nếu AddNewRow thất bại
+            }
+        }
+
+        // 4. Rải tất cả số vào ô trống (kể cả ô mới vừa tạo)
+        int copyIndex = 0;
+        for (int y = 0; y < rows && copyIndex < numbersToCopy.Count; y++)
+            for (int x = 0; x < columns && copyIndex < numbersToCopy.Count; x++)
             {
                 Cellv2 cell = GetCell(x, y);
                 if (cell != null && cell.IsEmpty())
                 {
-                    // Hàm FillData sẽ tự kích hoạt lại ô, chuyển state về Normal và đổi Text
                     cell.FillData(numbersToCopy[copyIndex]);
                     newCells.Add(cell);
                     copyIndex++;
-
-                    if (copyIndex >= numbersToCopy.Count)
-                    {
-                        break; // Đã chép xong toàn bộ
-                    }
                 }
             }
-            if (copyIndex >= numbersToCopy.Count) break;
-        }
 
+        // Spawn gem lên các ô mới
         if (GameManager.Instance != null && newCells.Count > 0)
-        {
             GameManager.Instance.SpawnGemsOnCells(newCells);
-        }
 
-        if (copyIndex < numbersToCopy.Count)
-        {
-            Debug.LogWarning("Bảng đã đầy! Không có đủ ô trống để sao chép toàn bộ các số. Bạn cần thêm cơ chế sinh thêm dòng mới nếu muốn chứa thêm.");
-        }
-
-        // Kiểm tra thắng thua sau khi chép số
+        // Kiểm tra thắng thua
         if (GameManager.Instance != null)
-        {
             GameManager.Instance.CheckGameStatus();
+    }
+
+    // Tạo 1 row mới gồm đủ 9 ô và gắn vào cuối bảng
+    private List<Cellv2> AddNewRow()
+    {
+        // Lấy prefab từ BoardGeneratorv2 nếu chưa có trực tiếp
+        Cellv2 prefab = (boardGenerator != null) ? boardGenerator.cellPrefabv2 : null;
+        if (prefab == null)
+        {
+            Debug.LogError("[GridManager] Không có cellPrefab! Kiểm tra boardGenerator trong Inspector.");
+            return new List<Cellv2>();
         }
+
+        int newRowIndex = rows; // Row mới sẽ ở dưới cùng
+        rows++;                  // Mở rộng tổng số dòng
+
+        // Mở rộng mảng board
+        Cellv2[] newBoard = new Cellv2[rows * columns];
+        System.Array.Copy(board, newBoard, board.Length);
+        board = newBoard;
+
+        // Tạo container cho row mới
+        Transform rowContainer = new GameObject($"Row_{newRowIndex}").transform;
+        rowContainer.SetParent(gridContainer);
+        rowContainer.localPosition = new Vector3(0, -newRowIndex * spacing, 0);
+
+        List<Cellv2> cells = new List<Cellv2>();
+        for (int x = 0; x < columns; x++)
+        {
+            Cellv2 newCell = UnityEngine.Object.Instantiate(prefab, rowContainer);
+            newCell.transform.localPosition = new Vector3(x * spacing, 0, 0);
+            newCell.gridX = x;
+            newCell.gridY = newRowIndex;
+            newCell.SetEmpty();
+
+            board[newRowIndex * columns + x] = newCell;
+            cells.Add(newCell);
+        }
+
+        Debug.Log($"[GridManager] Đã tạo Row_{newRowIndex} mới. Tổng rows = {rows}");
+        return cells;
     }
 }

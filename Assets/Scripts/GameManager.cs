@@ -1,6 +1,5 @@
 using System.Collections;
 using System.Collections.Generic;
-// using UnityEditor.SceneManagement;
 using UnityEngine;
 
 public class GameManager : MonoBehaviour
@@ -19,35 +18,32 @@ public class GameManager : MonoBehaviour
     public int collectedOrange = 0;
     public int collectedPurple = 0;
 
-  
-
     void Awake()
     {
-        
-        if (Instance == null) 
-        {
+        if (Instance == null)
             Instance = this;
-        }
-        else 
-        {
+        else
             Destroy(gameObject);
-        }
     }
 
+    // ── Stage helpers ──────────────────────────────────────────────
+    // Gem chi xuat hien tu stage 3 tro len
+    private bool IsGemStage() => currentStage >= 3;
+    private bool AllGemsCollected() => collectedOrange >= targetOrange && collectedPurple >= targetPurple;
+
+    // ── Cell click / Match ─────────────────────────────────────────
     public void OnCellClicked(Cellv2 clickedCell)
     {
-        Debug.Log($"Đang chọn ô tại toạ độ: (X: {clickedCell.gridX}, Y: {clickedCell.gridY}) - Giá trị: {clickedCell.numberValue}");
-    
+        Debug.Log($"Dang chon o tai toa do: (X: {clickedCell.gridX}, Y: {clickedCell.gridY}) - Gia tri: {clickedCell.numberValue}");
+
         if (firstSelectedCell != null && secondSelectedCell != null)
-        {
             ResetSelection();
-        }
 
         if (clickedCell == firstSelectedCell)
         {
             firstSelectedCell.Deselect();
             firstSelectedCell = null;
-            return; // Dừng tại đây
+            return;
         }
 
         if (firstSelectedCell == null)
@@ -59,36 +55,27 @@ public class GameManager : MonoBehaviour
         {
             secondSelectedCell = clickedCell;
             secondSelectedCell.Select();
-            
-            // GỌI HÀM KIỂM TRA MATCH Ở ĐÂY
+
             if (CheckValidMatch(firstSelectedCell, secondSelectedCell))
             {
                 GridManager grid = firstSelectedCell.GetComponentInParent<GridManager>();
 
-                // Nếu ăn thành công -> Set Matched cả 2 ô
                 firstSelectedCell.SetMatched(firstSelectedCell.numberValue);
                 secondSelectedCell.SetMatched(secondSelectedCell.numberValue);
 
-                // Gom Gem nếu có
                 CollectGem(firstSelectedCell);
                 CollectGem(secondSelectedCell);
 
                 ResetSelection();
 
                 if (grid != null)
-                {
                     grid.CheckAndClearMatchedRows();
-                }
 
-                // KIỂM TRA THẮNG / THUA SAU KHI ĂN
                 CheckGameStatus();
             }
             else
             {
-            
-                Invoke("ResetSelection", 0.5f); 
-                
-
+                Invoke("ResetSelection", 0.5f);
             }
         }
     }
@@ -100,7 +87,6 @@ public class GameManager : MonoBehaviour
             firstSelectedCell.Deselect();
             firstSelectedCell = null;
         }
-        
         if (secondSelectedCell != null)
         {
             secondSelectedCell.Deselect();
@@ -108,87 +94,59 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    private bool CheckValidMatch(Cellv2 cell1, Cellv2 cell2, bool silent = false)
+    // ── Match validation ───────────────────────────────────────────
+    public bool CheckValidMatch(Cellv2 cell1, Cellv2 cell2, bool silent = false)
     {
-        // 1. Kiểm tra giá trị: phải giống nhau hoặc tổng bằng 10
         if (cell1.numberValue != cell2.numberValue && cell1.numberValue + cell2.numberValue != 10)
         {
-            if (!silent) Debug.Log("Sai! Giá trị không giống nhau và tổng không bằng 10.");
+            if (!silent) Debug.Log("Sai! Gia tri khong giong nhau va tong khong bang 10.");
             return false;
         }
 
-        // Lấy tọa độ
-        int x1 = cell1.gridX;
-        int y1 = cell1.gridY;
-        int x2 = cell2.gridX;
-        int y2 = cell2.gridY;
-
+        int x1 = cell1.gridX, y1 = cell1.gridY;
+        int x2 = cell2.gridX, y2 = cell2.gridY;
         GridManager gridManager = cell1.GetComponentInParent<GridManager>();
+        int dx = x2 - x1, dy = y2 - y1;
 
-        // Tính khoảng cách
-        int dx = x2 - x1;
-        int dy = y2 - y1;
-
-        // --- CÁCH 1: KIỂM TRA THẲNG HÀNG (Ngang, Dọc, Chéo) ---
-        // Thẳng hàng nếu dx = 0 (dọc), dy = 0 (ngang), hoặc |dx| = |dy| (chéo)
+        // --- CACH 1: DUONG THANG (Ngang, Doc, Cheo) ---
         if (dx == 0 || dy == 0 || Mathf.Abs(dx) == Mathf.Abs(dy))
         {
-            // Tìm hướng đi (step)
             int stepX = (dx == 0) ? 0 : (dx > 0 ? 1 : -1);
             int stepY = (dy == 0) ? 0 : (dy > 0 ? 1 : -1);
+            int cx = x1 + stepX, cy = y1 + stepY;
+            bool blocked = false;
 
-            int currentX = x1 + stepX;
-            int currentY = y1 + stepY;
-
-            bool isBlocked = false;
-
-            // Duyệt dọc theo đường thẳng từ ô 1 đến ô 2
-            while (currentX != x2 || currentY != y2)
+            while (cx != x2 || cy != y2)
             {
-                Cellv2 cellInBetween = gridManager.GetCell(currentX, currentY);
-                
-                if (cellInBetween != null && !cellInBetween.IsEmpty() && !cellInBetween.isMatched)
-                {
-                    isBlocked = true;
-                    break;
-                }
-                currentX += stepX;
-                currentY += stepY;
+                Cellv2 mid = gridManager.GetCell(cx, cy);
+                if (mid != null && !mid.IsEmpty() && !mid.isMatched) { blocked = true; break; }
+                cx += stepX; cy += stepY;
             }
 
-            if (!isBlocked)
-            {
-                if (!silent) Debug.Log("Chính xác! Ăn thành công theo đường thẳng (ngang/dọc/chéo).");
-                return true;
-            }
+            if (!blocked) { if (!silent) Debug.Log("An theo duong thang!"); return true; }
         }
 
-        // --- CÁCH 2: LUẬT NỐI ĐUÔI (Wrap-around) CỦA NUMBER MATCH ---
-        // Quét mảng 1 chiều (từ trái qua phải, trên xuống dưới).
-        // Nếu giữa 2 ô toàn là khoảng trống thì ăn được.
-        int index1 = y1 * gridManager.columns + x1;
-        int index2 = y2 * gridManager.columns + x2;
+        // --- CACH 2: NOI DUOI (wrap-around) ---
+        int idx1 = y1 * gridManager.columns + x1;
+        int idx2 = y2 * gridManager.columns + x2;
+        int start = Mathf.Min(idx1, idx2) + 1;
+        int end   = Mathf.Max(idx1, idx2);
 
-        int startIndex = Mathf.Min(index1, index2) + 1;
-        int endIndex = Mathf.Max(index1, index2);
-
-        for (int i = startIndex; i < endIndex; i++)
+        for (int i = start; i < end; i++)
         {
-            int checkX = i % gridManager.columns;
-            int checkY = i / gridManager.columns;
-            Cellv2 cellInBetween = gridManager.GetCell(checkX, checkY);
-            
-            if (cellInBetween != null && !cellInBetween.IsEmpty() && !cellInBetween.isMatched)
+            Cellv2 mid = gridManager.GetCell(i % gridManager.columns, i / gridManager.columns);
+            if (mid != null && !mid.IsEmpty() && !mid.isMatched)
             {
-                if (!silent) Debug.Log("Sai! Đường đi bị chặn bởi một số khác.");
+                if (!silent) Debug.Log("Sai! Duong di bi chan.");
                 return false;
             }
         }
 
-        if (!silent) Debug.Log("Chính xác! Ăn thành công theo luật nối đuôi.");
+        if (!silent) Debug.Log("An theo luat noi duoi!");
         return true;
     }
 
+    // ── Game status ────────────────────────────────────────────────
     public void CheckGameStatus()
     {
         GridManager gridManager = FindObjectOfType<GridManager>();
@@ -197,9 +155,7 @@ public class GameManager : MonoBehaviour
         bool isCleared = true;
         List<Cellv2> activeCells = new List<Cellv2>();
 
-        // Lấy tất cả các ô còn số
         for (int y = 0; y < gridManager.rows; y++)
-        {
             for (int x = 0; x < gridManager.columns; x++)
             {
                 Cellv2 cell = gridManager.GetCell(x, y);
@@ -209,139 +165,152 @@ public class GameManager : MonoBehaviour
                     activeCells.Add(cell);
                 }
             }
-        }
 
-        // Win: Nếu bảng không còn số nào
+        // ── BANG DA SACH ───────────────────────────────────────────
         if (isCleared)
         {
-            Debug.Log("CHÚC MỪNG! BẠN ĐÃ CLEAR BẢNG!");
-            currentStage++;
-            ResetBoard();
+            if (!IsGemStage())
+            {
+                // Stage 1-2: chi can clear bang la thang
+                Debug.Log($"STAGE {currentStage} WIN! Bang da sach!");
+                currentStage++;
+                ResetBoard(win: true);
+            }
+            else if (AllGemsCollected())
+            {
+                // Stage 3+: du gem + clear bang = thang
+                Debug.Log($"STAGE {currentStage} WIN! Thu du gem va clear bang!");
+                currentStage++;
+                ResetBoard(win: true);
+            }
+            else
+            {
+                // Stage 3+: Clear bang nhung chua du gem -> THUA
+                Debug.Log($"STAGE {currentStage} LOSE! Clear bang nhung chua thu du gem! ({collectedOrange}/{targetOrange} cam, {collectedPurple}/{targetPurple} tim)");
+                ResetBoard(win: false);
+            }
             return;
         }
 
-        // Thua: Nếu hết lượt thêm số VÀ không còn cặp nào có thể match
+        // ── THANG GEM TRUOC KHI CLEAR BANG (stage 3+) ─────────────
+        if (IsGemStage() && AllGemsCollected())
+        {
+            Debug.Log($"STAGE {currentStage} WIN! Thu du gem!");
+            currentStage++;
+            ResetBoard(win: true);
+            return;
+        }
+
+        // ── HET LUOT THEM SO VA KHONG CON MATCH ───────────────────
         if (gridManager.addNumber <= 0)
         {
             bool hasMatch = false;
-            for (int i = 0; i < activeCells.Count; i++)
-            {
+            for (int i = 0; i < activeCells.Count && !hasMatch; i++)
                 for (int j = i + 1; j < activeCells.Count; j++)
-                {
                     if (CheckValidMatch(activeCells[i], activeCells[j], true))
-                    {
-                        hasMatch = true;
-                        break;
-                    }
-                }
-                if (hasMatch) break;
-            }
+                    { hasMatch = true; break; }
 
             if (!hasMatch)
             {
-                Debug.Log("THUA CUỘC! KHÔNG THỂ MATCH VÀ HẾT LƯỢT THÊM SỐ!");
-                ResetBoard();
+                Debug.Log("THUA CUOC! Khong the match va het luot!");
+                ResetBoard(win: false);
             }
         }
     }
 
-    private void ResetBoard()
+    // ── Reset ──────────────────────────────────────────────────────
+    private void ResetBoard(bool win = false)
     {
         GridManager gridManager = FindObjectOfType<GridManager>();
         BoardGeneratorv2 generator = FindObjectOfType<BoardGeneratorv2>();
 
         if (gridManager != null && generator != null)
         {
-            // Xóa rác cũ
             foreach (Transform child in gridManager.gridContainer)
-            {
                 Destroy(child.gameObject);
-            }
+
             gridManager.addNumber = 6;
-            
-            // Gọi sinh bảng mới
+
+            if (win)
+                ResetGems(); // Reset gem khi sang stage moi
+            // Neu thua: giu stage hien tai, khong reset gem
+
             generator.GenerateGrid();
         }
     }
 
+    private void ResetGems()
+    {
+        collectedOrange = 0;
+        collectedPurple = 0;
+        Debug.Log($"[Gem] Reset gem cho stage {currentStage}");
+    }
+
+    // ── Gem collection ─────────────────────────────────────────────
     private void CollectGem(Cellv2 cell)
     {
         if (cell.currentGemType == GemType.Orange)
         {
             collectedOrange++;
-            Debug.Log($"Đã thu thập 1 viên Cam! ({collectedOrange}/{targetOrange})");
+            Debug.Log($"Thu 1 vien Cam! ({collectedOrange}/{targetOrange})");
         }
         else if (cell.currentGemType == GemType.Purple)
         {
             collectedPurple++;
-            Debug.Log($"Đã thu thập 1 viên Tím! ({collectedPurple}/{targetPurple})");
+            Debug.Log($"Thu 1 vien Tim! ({collectedPurple}/{targetPurple})");
         }
     }
 
+    // ── Gem spawning ───────────────────────────────────────────────
     public void SpawnGemsOnCells(List<Cellv2> targetCells, bool isInitialBoard = false)
     {
+        // Gem chi xuat hien tu stage 3 tro len
+        if (!IsGemStage()) return;
+
         int z = 0;
         List<GemType> availableTypes = new List<GemType>();
-        
-        if (collectedOrange < targetOrange) 
-        {
-            z++;
-            availableTypes.Add(GemType.Orange);
-        }
-        if (collectedPurple < targetPurple) 
-        {
-            z++;
-            availableTypes.Add(GemType.Purple);
-        }
 
-        if (z == 0) return; // Đã gom đủ gem
+        if (collectedOrange < targetOrange) { z++; availableTypes.Add(GemType.Orange); }
+        if (collectedPurple < targetPurple) { z++; availableTypes.Add(GemType.Purple); }
+
+        if (z == 0) return; // Da gom du gem
 
         List<int> spawnedGemValues = new List<int>();
 
         if (isInitialBoard)
         {
-            // MẶC ĐỊNH SPAWN ĐÚNG Z LOẠI GEM LÚC ĐẦU GAME
+            // Ep buoc spawn dung Z gem luc dau game
             int spawned = 0;
-            
-            // Xáo trộn mảng để chọn ô ngẫu nhiên
             List<Cellv2> shuffled = new List<Cellv2>(targetCells);
             for (int i = 0; i < shuffled.Count; i++)
             {
                 int r = Random.Range(i, shuffled.Count);
-                Cellv2 temp = shuffled[i];
-                shuffled[i] = shuffled[r];
-                shuffled[r] = temp;
+                Cellv2 tmp = shuffled[i]; shuffled[i] = shuffled[r]; shuffled[r] = tmp;
             }
 
             foreach (Cellv2 cell in shuffled)
             {
                 if (spawned >= z) break;
                 if (cell.IsEmpty() || cell.isMatched || cell.currentGemType != GemType.None) continue;
-                
+
                 int val = cell.numberValue;
                 bool canSpawn = true;
-                foreach (int spawnedVal in spawnedGemValues)
-                {
-                    if (val == spawnedVal || val + spawnedVal == 10)
-                    {
-                        canSpawn = false;
-                        break;
-                    }
-                }
-                
+                foreach (int sv in spawnedGemValues)
+                    if (val == sv || val + sv == 10) { canSpawn = false; break; }
+
                 if (canSpawn && availableTypes.Count > 0)
                 {
                     GemType type = availableTypes[Random.Range(0, availableTypes.Count)];
                     cell.SetGem(type);
                     spawnedGemValues.Add(val);
                     spawned++;
-                    availableTypes.Remove(type); // Tránh trùng màu
+                    availableTypes.Remove(type);
                 }
             }
             return;
         }
 
-        // SPAWN DỰA TRÊN TỈ LỆ VÀ BẢO HIỂM LÚC THÊM SỐ
+        // Spawn theo ti le + bao hiem khi them so
         int gemsSpawned = 0;
         int yLimit = Mathf.CeilToInt((targetCells.Count + 1) / 2f);
         int currentY = 0;
@@ -349,27 +318,22 @@ public class GameManager : MonoBehaviour
         for (int i = 0; i < targetCells.Count; i++)
         {
             if (gemsSpawned >= z) break;
-            
+
             Cellv2 cell = targetCells[i];
+            currentY++;
+
             if (cell.IsEmpty() || cell.isMatched || cell.currentGemType != GemType.None) continue;
 
             float rand = Random.Range(0f, 100f);
-            bool triggerGem = rand <= 7f || currentY >= yLimit - 1; // 7% tỉ lệ ra ngẫu nhiên hoặc chạm Pity
+            bool pity  = (currentY >= yLimit - 1);
+            bool trigger = rand <= 7f || pity;
 
-            if (triggerGem)
+            if (trigger)
             {
                 int val = cell.numberValue;
                 bool canSpawn = true;
-                
-                // Kiểm tra xem gem chuẩn bị sinh ra có bị match với gem nào đã đẻ ra cùng đợt không
-                foreach (int spawnedVal in spawnedGemValues)
-                {
-                    if (val == spawnedVal || val + spawnedVal == 10)
-                    {
-                        canSpawn = false;
-                        break;
-                    }
-                }
+                foreach (int sv in spawnedGemValues)
+                    if (val == sv || val + sv == 10) { canSpawn = false; break; }
 
                 if (canSpawn && availableTypes.Count > 0)
                 {
@@ -377,17 +341,8 @@ public class GameManager : MonoBehaviour
                     cell.SetGem(type);
                     spawnedGemValues.Add(val);
                     gemsSpawned++;
-                    currentY = 0;
-                    availableTypes.Remove(type); // Tránh rải 2 viên cùng màu trong 1 mẻ nếu không cần thiết
+                    currentY = 0; // Reset bao hiem
                 }
-                else
-                {
-                    currentY++;
-                }
-            }
-            else
-            {
-                currentY++;
             }
         }
     }
