@@ -15,9 +15,14 @@ public class GridManager : MonoBehaviour
     public float padding = 0.5f;
     public BoardGeneratorv2 boardGenerator; // Dùng để lấy cellPrefab, kéo BoardGeneratorv2 vào
 
+    [Header("VFX")]
+    public MatchLineSpawner matchLineSpawner;
+
     // Quản lý mảng 1 chiều chứa các ô
     public Cellv2[] board;
     public int addNumber = 6;
+
+    private bool _isClearingRows;
 
     public void Start()
     {
@@ -86,28 +91,50 @@ public class GridManager : MonoBehaviour
 
     public void CheckAndClearMatchedRows()
     {
-        // Duyệt từ dưới lên trên (để khi dịch dòng xuống không bị lệch index của các dòng chưa kiểm tra)
-        for (int y = rows - 1; y >= 0; y--)
+        if (_isClearingRows) return;
+        StartCoroutine(ClearRowsWithDelay());
+    }
+
+    private IEnumerator ClearRowsWithDelay()
+    {
+        _isClearingRows = true;
+
+        for (int y = 0; y < rows; y++)
         {
             if (IsRowFullyMatched(y))
             {
+                if (matchLineSpawner != null)
+                    matchLineSpawner.SpawnRowLine(this, y);
+
+                AudioManager.Instance?.PlayRowClear();
+                yield return new WaitForSeconds(0.35f);
                 ShiftRowsUp(y);
+                y--; // Kiểm tra lại index y vì dòng y+1 đã nhảy lên y
             }
         }
+
+        _isClearingRows = false;
     }
 
     private bool IsRowFullyMatched(int y)
     {
+        bool hasMatchedCell = false;
         for (int x = 0; x < columns; x++)
         {
             Cellv2 cell = GetCell(x, y);
-            // Bỏ qua null. Nếu ô không phải matched và không phải empty -> dòng chưa hoàn thành
-            if (cell != null && !cell.isMatched && !cell.IsEmpty()) 
+            if (cell == null || cell.IsEmpty()) continue;
+            
+            if (cell.isMatched)
             {
-                return false;
+                hasMatchedCell = true;
+                continue;
             }
+
+            // Nếu gặp bất kỳ ô nào còn số (Normal), thì hàng này chưa xong
+            return false;
         }
-        return true;
+        // Chỉ coi là "Fully Matched" nếu hàng đó có ít nhất 1 ô đã match (để tránh clear hàng rỗng sẵn)
+        return hasMatchedCell;
     }
 
     private void ShiftRowsUp(int clearedRowY)
@@ -172,6 +199,8 @@ public class GridManager : MonoBehaviour
         {
             Debug.Log("Het Luot Chon!"); return;
         }
+
+        AudioManager.Instance?.PlayAddNumber(); // Sound khi bắt đầu thêm số
 
         // 1. Thu thập các số còn tồn tại trên bảng
         List<Cellv2> newCells = new List<Cellv2>();

@@ -109,9 +109,11 @@ public class Cellv2 : MonoBehaviour
         if (numberSprite != null) numberSprite.color = new Color(0f, 0f, 0f, 0.30f);
         BoxCollider2D col = GetComponent<BoxCollider2D>();
         if (col != null) col.enabled = false;
+
+
     }
 
-    public void SetEmpty()
+    public void SetEmpty()  
     {
         state = CellState.Empty;
         numberValue = 0;
@@ -164,6 +166,8 @@ public class Cellv2 : MonoBehaviour
         state = CellState.matching;
         if (background != null)
             background.color = new Color(0.7f, 1f, 0.7f);
+
+        AudioManager.Instance?.PlaySelect();
     }
 
     public void Deselect()

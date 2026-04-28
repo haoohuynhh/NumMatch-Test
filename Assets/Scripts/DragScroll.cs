@@ -15,6 +15,7 @@ public class DragScroll : MonoBehaviour
     public float inertia = 0.92f;
     public float snapSpeed = 10f;
     public float maxVelocity = 30f; // Giới hạn velocity tối đa để tránh bay ra xa
+    public float hardClampDistance = 5f; // Vuot qua khoang nay se snap ve bien de tranh worldAABB
 
     // ── Bounds ────────────────────────────────────────────────────
     // _lowerBound: vị trí Y ban đầu, NEO CỐ ĐỊNH, không đổi
@@ -32,6 +33,7 @@ public class DragScroll : MonoBehaviour
     private float _lastInputY;
     private float _velocity;
     private bool  _isDragScroll = false;
+    private float _snapVelocity;
 
     /// <summary>Trả về true nếu người dùng đã kéo đủ xa để tính là scroll (không phải click).</summary>
     public  bool  IsDragScrolling => _isDragScroll;
@@ -162,23 +164,21 @@ public class DragScroll : MonoBehaviour
         if (cy >= _lowerBound && cy <= _upperBound) return;
 
         float dist = Mathf.Abs(cy - clamped);
-
-        if (dist > 1f)
+        if (dist >= hardClampDistance)
         {
-            // Quá xa biên → hard-clamp ngay lập tức để tránh lỗi worldAABB
             targetContainer.position = new Vector3(
                 targetContainer.position.x, clamped, targetContainer.position.z);
             _velocity = 0f;
+            _snapVelocity = 0f;
+            return;
         }
-        else
-        {
-            // Gần biên → Lerp mượt về biên
-            float snapped = Mathf.Lerp(cy, clamped, Time.deltaTime * snapSpeed);
-            targetContainer.position = new Vector3(
-                targetContainer.position.x, snapped, targetContainer.position.z);
 
-            if (_velocity * (cy - clamped) > 0f) _velocity *= 0.5f;
-        }
+        float smoothTime = 1f / Mathf.Max(snapSpeed, 0.01f);
+        float snapped = Mathf.SmoothDamp(cy, clamped, ref _snapVelocity, smoothTime);
+        targetContainer.position = new Vector3(
+            targetContainer.position.x, snapped, targetContainer.position.z);
+
+        if (_velocity * (cy - clamped) > 0f) _velocity *= 0.5f;
     }
 
 #if UNITY_EDITOR

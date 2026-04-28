@@ -9,6 +9,9 @@ public class GameManager : MonoBehaviour
     public Cellv2 firstSelectedCell;
     public Cellv2 secondSelectedCell;
 
+    [Header("VFX")]
+    public MatchLineSpawner matchLineSpawner;
+
     [Header("Game State")]
     [SerializeField] public int currentStage = 1;
 
@@ -60,8 +63,13 @@ public class GameManager : MonoBehaviour
             {
                 GridManager grid = firstSelectedCell.GetComponentInParent<GridManager>();
 
+                if (matchLineSpawner != null)
+                    matchLineSpawner.SpawnMatchLine(firstSelectedCell, secondSelectedCell, grid);
+
                 firstSelectedCell.SetMatched(firstSelectedCell.numberValue);
+                AudioManager.Instance?.PlayMatch();
                 secondSelectedCell.SetMatched(secondSelectedCell.numberValue);
+
 
                 CollectGem(firstSelectedCell);
                 CollectGem(secondSelectedCell);
@@ -261,88 +269,95 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    // ── Gem Helpers ───────────────────────────────────────────────
+    public void GetExistingGemsCount(out int orangeOnBoard, out int purpleOnBoard)
+    {
+        orangeOnBoard = 0;
+        purpleOnBoard = 0;
+        
+        GridManager grid = FindObjectOfType<GridManager>();
+        if (grid == null || grid.board == null) return;
+
+        foreach (Cellv2 cell in grid.board)
+        {
+            if (cell == null || cell.IsEmpty() || cell.isMatched) continue;
+            if (cell.currentGemType == GemType.Orange) orangeOnBoard++;
+            else if (cell.currentGemType == GemType.Purple) purpleOnBoard++;
+        }
+    }
+
     // ── Gem spawning ───────────────────────────────────────────────
     public void SpawnGemsOnCells(List<Cellv2> targetCells, bool isInitialBoard = false)
     {
-        // Gem chi xuat hien tu stage 3 tro len
         if (!IsGemStage()) return;
 
-        int z = 0;
-        List<GemType> availableTypes = new List<GemType>();
+        // 1. Lấy số lượng gem hiện có trên bảng
+        int orangeOnBoard, purpleOnBoard;
+        GetExistingGemsCount(out orangeOnBoard, out purpleOnBoard);
 
-        if (collectedOrange < targetOrange) { z++; availableTypes.Add(GemType.Orange); }
-        if (collectedPurple < targetPurple) { z++; availableTypes.Add(GemType.Purple); }
+        // 2. Tính số lượng tối đa có thể sinh thêm mà không vượt quá mục tiêu
+        int canSpawnOrange = Mathf.Max(0, targetOrange - (collectedOrange + orangeOnBoard));
+        int canSpawnPurple = Mathf.Max(0, targetPurple - (collectedPurple + purpleOnBoard));
 
-        if (z == 0) return; // Da gom du gem
+        // Nếu cả hai loại đã đủ (hoặc đang có đủ trên bảng) thì không làm gì cả
+        if (canSpawnOrange <= 0 && canSpawnPurple <= 0) return;
 
-        List<int> spawnedGemValues = new List<int>();
-
-        if (isInitialBoard)
+        // Trộn danh sách để rải gem ngẫu nhiên
+        List<Cellv2> shuffled = new List<Cellv2>(targetCells);
+        for (int i = 0; i < shuffled.Count; i++)
         {
-            // Ep buoc spawn dung Z gem luc dau game
-            int spawned = 0;
-            List<Cellv2> shuffled = new List<Cellv2>(targetCells);
-            for (int i = 0; i < shuffled.Count; i++)
-            {
-                int r = Random.Range(i, shuffled.Count);
-                Cellv2 tmp = shuffled[i]; shuffled[i] = shuffled[r]; shuffled[r] = tmp;
-            }
-
-            foreach (Cellv2 cell in shuffled)
-            {
-                if (spawned >= z) break;
-                if (cell.IsEmpty() || cell.isMatched || cell.currentGemType != GemType.None) continue;
-
-                int val = cell.numberValue;
-                bool canSpawn = true;
-                foreach (int sv in spawnedGemValues)
-                    if (val == sv || val + sv == 10) { canSpawn = false; break; }
-
-                if (canSpawn && availableTypes.Count > 0)
-                {
-                    GemType type = availableTypes[Random.Range(0, availableTypes.Count)];
-                    cell.SetGem(type);
-                    spawnedGemValues.Add(val);
-                    spawned++;
-                    availableTypes.Remove(type);
-                }
-            }
-            return;
+            int r = Random.Range(i, shuffled.Count);
+            Cellv2 tmp = shuffled[i]; shuffled[i] = shuffled[r]; shuffled[r] = tmp;
         }
 
-        // Spawn theo ti le + bao hiem khi them so
+        int orangeSpawned = 0;
+        int purpleSpawned = 0;
+        List<int> spawnedValues = new List<int>();
+
+        // X% random 5-7%, Y pity, Z toi da = so loai gem con thieu
+        int availableTypes = 0;
+        if (canSpawnOrange > 0) availableTypes++;
+        if (canSpawnPurple > 0) availableTypes++;
+        int maxGemsThisTurn = availableTypes;
+        if (maxGemsThisTurn <= 0) return;
+
+        int pityLimit = Mathf.CeilToInt((targetCells.Count + 1) / 2f);
+        int sinceLastGem = 0;
         int gemsSpawned = 0;
-        int yLimit = Mathf.CeilToInt((targetCells.Count + 1) / 2f);
-        int currentY = 0;
 
-        for (int i = 0; i < targetCells.Count; i++)
+        foreach (Cellv2 cell in shuffled)
         {
-            if (gemsSpawned >= z) break;
-
-            Cellv2 cell = targetCells[i];
-            currentY++;
-
+            if (gemsSpawned >= maxGemsThisTurn) break;
             if (cell.IsEmpty() || cell.isMatched || cell.currentGemType != GemType.None) continue;
 
-            float rand = Random.Range(0f, 100f);
-            bool pity  = (currentY >= yLimit - 1);
-            bool trigger = rand <= 7f || pity;
+            sinceLastGem++;
 
-            if (trigger)
+            float chance = Random.Range(5f, 7f);
+            bool pityTrigger = sinceLastGem >= pityLimit;
+            bool trigger = pityTrigger || (Random.Range(0f, 100f) <= chance);
+
+            if (!trigger) continue;
+
+            int val = cell.numberValue;
+            bool valueConflict = false;
+            foreach (int sv in spawnedValues)
+                if (val == sv || val + sv == 10) { valueConflict = true; break; }
+            if (valueConflict) continue;
+
+            List<GemType> possibleTypes = new List<GemType>();
+            if (orangeSpawned < canSpawnOrange) possibleTypes.Add(GemType.Orange);
+            if (purpleSpawned < canSpawnPurple) possibleTypes.Add(GemType.Purple);
+
+            if (possibleTypes.Count > 0)
             {
-                int val = cell.numberValue;
-                bool canSpawn = true;
-                foreach (int sv in spawnedGemValues)
-                    if (val == sv || val + sv == 10) { canSpawn = false; break; }
+                GemType selected = possibleTypes[Random.Range(0, possibleTypes.Count)];
+                cell.SetGem(selected);
+                spawnedValues.Add(val);
+                gemsSpawned++;
+                sinceLastGem = 0;
 
-                if (canSpawn && availableTypes.Count > 0)
-                {
-                    GemType type = availableTypes[Random.Range(0, availableTypes.Count)];
-                    cell.SetGem(type);
-                    spawnedGemValues.Add(val);
-                    gemsSpawned++;
-                    currentY = 0; // Reset bao hiem
-                }
+                if (selected == GemType.Orange) orangeSpawned++;
+                else purpleSpawned++;
             }
         }
     }
