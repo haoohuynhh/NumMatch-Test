@@ -247,6 +247,15 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    public void AdvanceStageAndReset()
+    {
+        currentStage++;
+        if (currentStage > 3)
+            currentStage = 1;
+
+        ResetBoard(win: true);
+    }
+
     private void ResetGems()
     {
         collectedOrange = 0;
