@@ -29,8 +29,10 @@ public class Cellv2 : MonoBehaviour
     public CellState state;
     public GemType currentGemType = GemType.None;
 
-    // ── Scroll guard ────────────────────────────────────────────
+    // ── Scroll & Mask guard ─────────────────────────────────────
     private DragScroll _dragScroll;
+    private static SpriteMask[] _sharedMasks;
+    private static bool _masksCached = false;
 
     // Lấy sprite số tương ứng với value 1-9
     private Sprite GetNumberSprite(int value)
@@ -60,6 +62,50 @@ public class Cellv2 : MonoBehaviour
     {
         // Tìm DragScroll trong scene một lần — có thể ghi đè qua Inspector nếu muốn
         _dragScroll = FindObjectOfType<DragScroll>();
+
+        // Cache lại các SpriteMask (up/down mask) để kiểm tra tương tác
+        if (!_masksCached)
+        {
+            _sharedMasks = FindObjectsOfType<SpriteMask>();
+            _masksCached = true;
+        }
+    }
+
+    void Update()
+    {
+        // Bỏ qua nếu là cell trống hoặc đã match (vì collider đã tắt sẵn)
+        if (state == CellState.Empty || state == CellState.matched) return;
+
+        if (_sharedMasks != null && _sharedMasks.Length > 0)
+        {
+            bool isMasked = false;
+            Vector3 pos = transform.position;
+
+            foreach (var mask in _sharedMasks)
+            {
+                Bounds b = mask.bounds;
+                // Kiểm tra bằng bounding box 2D để bỏ qua trục Z có thể gây sai lệch
+                if (pos.x >= b.min.x && pos.x <= b.max.x &&
+                    pos.y >= b.min.y && pos.y <= b.max.y)
+                {
+                    isMasked = true;
+                    break;
+                }
+            }
+
+            BoxCollider2D col = GetComponent<BoxCollider2D>();
+            if (col != null)
+            {
+                if (isMasked && col.enabled)
+                {
+                    col.enabled = false;
+                }
+                else if (!isMasked && !col.enabled)
+                {
+                    col.enabled = true;
+                }
+            }
+        }
     }
 
     // Dùng chung background để hiển thị cả normalSprite và gem sprite
@@ -106,7 +152,7 @@ public class Cellv2 : MonoBehaviour
         numberValue = value;
         // Đổi về normalSprite, làm mờ sprite số
         if (background != null) background.sprite = normalSprite;
-        if (numberSprite != null) numberSprite.color = new Color(0f, 0f, 0f, 0.30f);
+        if (numberSprite != null) numberSprite.color = new Color(0f, 0f, 0f, 0.10f);
         BoxCollider2D col = GetComponent<BoxCollider2D>();
         if (col != null) col.enabled = false;
 
@@ -184,6 +230,9 @@ public class Cellv2 : MonoBehaviour
     {
         if (IsEmpty()) return;
         if (_dragScroll != null && _dragScroll.IsDragScrolling) return; // đang scroll → bỏ qua
+
+        // Chú ý: Việc chặn tương tác đã được chuyển sang hàm Update() 
+        // thông qua việc bật/tắt BoxCollider2D tự động.
 
         if (GameManager.Instance != null)
             GameManager.Instance.OnCellClicked(this);

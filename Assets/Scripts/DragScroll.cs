@@ -35,10 +35,8 @@ public class DragScroll : MonoBehaviour
     private bool  _isDragScroll = false;
     private float _snapVelocity;
 
-    /// <summary>Trả về true nếu người dùng đã kéo đủ xa để tính là scroll (không phải click).</summary>
     public  bool  IsDragScrolling => _isDragScroll;
 
-    // ── Init ───────────────────────────────────────────────────────
     void Start()
     {
         StartCoroutine(InitAfterFrame());
@@ -51,13 +49,12 @@ public class DragScroll : MonoBehaviour
         if (targetContainer == null) yield break;
 
         // Neo đầu = vị trí hiện tại sau CenterGrid — không bao giờ thay đổi
-        _lowerBound  = targetContainer.position.y;
+        _lowerBound  = targetContainer.localPosition.y;
         _initialized = true;
         RecalculateUpperBound();
     }
 
-    // ── Tính upper bound theo số row ──────────────────────────────
-    // Scroll xuống (container.y tăng) tối đa = (totalRows - visibleRows) * spacing
+
     private void RecalculateUpperBound()
     {
         if (!_initialized || gridManager == null) return;
@@ -68,8 +65,14 @@ public class DragScroll : MonoBehaviour
 
         _upperBound = _lowerBound + scrollRange;
     }
+    public void ResetScroll()
+    {
+        if (targetContainer == null) return;
+        _lowerBound  = targetContainer.localPosition.y;
+        _initialized = true;
+        RecalculateUpperBound();
+    }
 
-    // ── Update ─────────────────────────────────────────────────────
     void Update()
     {
         if (!_initialized) return;
@@ -82,7 +85,6 @@ public class DragScroll : MonoBehaviour
         ClampPosition();
     }
 
-    // ── Input ──────────────────────────────────────────────────────
     private void HandleInput()
     {
         if (Input.touchCount > 0)
@@ -116,7 +118,6 @@ public class DragScroll : MonoBehaviour
         float deltaPx = inputY - _lastInputY;
         _lastInputY   = inputY;
 
-        // Nếu đã di chuyển đủ ngưỡng → đánh dấu là scroll (không phải click)
         if (Mathf.Abs(deltaPx) > 10f)
             _isDragScroll = true;
 
@@ -124,13 +125,14 @@ public class DragScroll : MonoBehaviour
         float ppu   = cam != null ? Screen.height / (cam.orthographicSize * 2f) : 100f;
         float delta = (deltaPx / ppu) * dragSensitivity;
 
-        // Rubber-band khi vượt biên
-        float nextY = targetContainer.position.y + delta;
+        // Chặn delta không vượt quá một ngưỡng an toàn trong 1 frame để tránh lỗi văng do lướt quá nhanh
+        delta = Mathf.Clamp(delta, -5f, 5f);
+
+        float nextY = targetContainer.localPosition.y + delta;
         if (nextY < _lowerBound) delta *= 0.2f;
         if (nextY > _upperBound) delta *= 0.2f;
 
-        targetContainer.position += new Vector3(0, delta, 0);
-        // Giới hạn velocity tối đa để tránh inertia đẩy object ra vô cực
+        targetContainer.localPosition += new Vector3(0, delta, 0);
         float rawVelocity = delta / Mathf.Max(Time.deltaTime, 0.016f);
         _velocity = Mathf.Clamp(rawVelocity, -maxVelocity, maxVelocity);
     }
@@ -138,57 +140,55 @@ public class DragScroll : MonoBehaviour
     private void EndDrag()
     {
         _isDragging = false;
-        // _isDragScroll giữ nguyên → Cell đọc tại OnMouseUp, rồi tự reset ở BeginDrag tiếp theo
     }
 
-    // ── Quán tính ──────────────────────────────────────────────────
     private void ApplyInertia()
     {
         if (_isDragging) return;
 
         if (Mathf.Abs(_velocity) > 0.005f)
         {
-            targetContainer.position += new Vector3(0, _velocity * Time.deltaTime, 0);
-            _velocity *= inertia;
+            targetContainer.localPosition += new Vector3(0, _velocity * Time.deltaTime, 0);
+            
+            // Tính toán quán tính độc lập với frame rate
+            float cy = targetContainer.localPosition.y;
+            bool outOfBounds = cy < _lowerBound || cy > _upperBound;
+            
+            // Phanh gấp nếu ra khỏi vùng an toàn
+            float currentFriction = outOfBounds ? 0.2f : inertia;
+            
+            _velocity *= Mathf.Pow(currentFriction, Time.deltaTime * 60f);
         }
-        else _velocity = 0f;
+        else 
+        {
+            _velocity = 0f;
+        }
     }
 
-    // ── Clamp / Bounce-back ────────────────────────────────────────
     private void ClampPosition()
     {
-        float cy      = targetContainer.position.y;
+        float cy      = targetContainer.localPosition.y;
         float clamped = Mathf.Clamp(cy, _lowerBound, _upperBound);
 
-        // Trong biên hợp lệ → không làm gì cả
         if (cy >= _lowerBound && cy <= _upperBound) return;
 
         float dist = Mathf.Abs(cy - clamped);
-        if (dist >= hardClampDistance)
+        
+        // Giới hạn không cho vượt qua hardClampDistance để tránh bay quá xa, 
+        // nhưng không đưa thẳng về 'clamped' ngay lập tức để tránh giật hình.
+        if (dist > hardClampDistance)
         {
-            targetContainer.position = new Vector3(
-                targetContainer.position.x, clamped, targetContainer.position.z);
-            _velocity = 0f;
-            _snapVelocity = 0f;
-            return;
+            cy = clamped + Mathf.Sign(cy - clamped) * hardClampDistance;
+            
+            // Xóa velocity hướng ra ngoài để không tiếp tục đẩy xa hơn
+            if (_velocity * (cy - clamped) > 0f) 
+                _velocity = 0f;
         }
 
         float smoothTime = 1f / Mathf.Max(snapSpeed, 0.01f);
         float snapped = Mathf.SmoothDamp(cy, clamped, ref _snapVelocity, smoothTime);
-        targetContainer.position = new Vector3(
-            targetContainer.position.x, snapped, targetContainer.position.z);
-
-        if (_velocity * (cy - clamped) > 0f) _velocity *= 0.5f;
+        
+        targetContainer.localPosition = new Vector3(
+            targetContainer.localPosition.x, snapped, targetContainer.localPosition.z);
     }
-
-#if UNITY_EDITOR
-    void OnDrawGizmosSelected()
-    {
-        if (!_initialized) return;
-        Gizmos.color = Color.green;
-        Gizmos.DrawLine(new Vector3(-5, _lowerBound, 0), new Vector3(5, _lowerBound, 0));
-        Gizmos.color = Color.red;
-        Gizmos.DrawLine(new Vector3(-5, _upperBound, 0), new Vector3(5, _upperBound, 0));
-    }
-#endif
 }

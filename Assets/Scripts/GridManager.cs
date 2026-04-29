@@ -83,9 +83,13 @@ public class GridManager : MonoBehaviour
             float gridWidth = (columns - 1) * spacing;
             float gridHeight = (rows - 1) * spacing;
             
-            // Vì Y đang là số âm (đi xuống), nên để đưa grid về chính giữa:
-            // Đẩy trục X lùi về trái, và đẩy trục Y nâng lên trên
-            gridContainer.position = new Vector3(-gridWidth / 2f, gridHeight / 2f, 0);
+            // Dùng localPosition để không phụ thuộc vào vị trí của Parent
+            gridContainer.localPosition = new Vector3(-gridWidth / 2f, gridHeight / 2f, 0);
+
+            // Sau khi căn giữa xong, yêu cầu DragScroll cập nhật lại Bounds
+            DragScroll ds = gridContainer.GetComponent<DragScroll>();
+            if (ds == null) ds = FindObjectOfType<DragScroll>();
+            if (ds != null) ds.ResetScroll();
         }
     }
 

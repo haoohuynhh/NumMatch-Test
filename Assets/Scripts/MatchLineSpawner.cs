@@ -8,10 +8,6 @@ public class MatchLineSpawner : MonoBehaviour
     public float lineDuration = 0.35f;
     public float zOffset = -0.1f;
 
-    [Header("Fallback Settings")]
-    public Color fallbackColor = new Color(1f, 1f, 0.8f, 1f);
-    public float fallbackWidth = 0.08f;
-
     public void SpawnMatchLine(Cellv2 a, Cellv2 b)
     {
         if (a == null || b == null) return;
@@ -53,24 +49,9 @@ public class MatchLineSpawner : MonoBehaviour
         start.z += zOffset;
         end.z += zOffset;
 
-        LineRenderer line = null;
+        if (linePrefab == null) return;
 
-        if (linePrefab != null)
-        {
-            line = Instantiate(linePrefab, Vector3.zero, Quaternion.identity, transform);
-        }
-        else
-        {
-            var go = new GameObject("MatchLine");
-            go.transform.SetParent(transform);
-            line = go.AddComponent<LineRenderer>();
-            line.material = new Material(Shader.Find("Sprites/Default"));
-            line.startColor = fallbackColor;
-            line.endColor = fallbackColor;
-            line.startWidth = fallbackWidth;
-            line.endWidth = fallbackWidth;
-            line.positionCount = 2;
-        }
+        LineRenderer line = Instantiate(linePrefab, Vector3.zero, Quaternion.identity, transform);
 
         line.positionCount = 2;
         line.SetPosition(0, start);
