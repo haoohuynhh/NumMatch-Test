@@ -38,6 +38,20 @@ public class GridManager : MonoBehaviour
         board = new Cellv2[columns * rows];
     }
 
+    public void ResetGrid()
+    {
+        StopAllCoroutines();
+        _isClearingRows = false;
+        
+        if (gridContainer != null)
+        {
+            foreach (Transform child in gridContainer)
+            {
+                Destroy(child.gameObject);
+            }
+        }
+    }
+
     public void AddCell(int index, Cellv2 cell)
     {
         if (board != null && index >= 0 && index < board.Length)

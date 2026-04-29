@@ -233,10 +233,16 @@ public class GameManager : MonoBehaviour
         GridManager gridManager = FindObjectOfType<GridManager>();
         BoardGeneratorv2 generator = FindObjectOfType<BoardGeneratorv2>();
 
+        // Xóa sạch trạng thái chọn ô cũ để tránh null reference
+        ResetSelection();
+
         if (gridManager != null && generator != null)
         {
-            foreach (Transform child in gridManager.gridContainer)
-                Destroy(child.gameObject);
+            // Dừng mọi coroutine (vd: đang clear row) và xoá cell cũ
+            gridManager.ResetGrid();
+            
+            // Dừng các coroutine sinh bảng nếu người chơi bấm liên tục
+            generator.StopAllCoroutines();
 
             gridManager.addNumber = 6;
 
