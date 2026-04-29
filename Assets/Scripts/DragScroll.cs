@@ -92,10 +92,17 @@ public class DragScroll : MonoBehaviour
             Touch t = Input.GetTouch(0);
             switch (t.phase)
             {
-                case TouchPhase.Began:                   BeginDrag(t.position.y); break;
-                case TouchPhase.Moved when _isDragging:  ApplyDrag(t.position.y);  break;
+                case TouchPhase.Began:                   
+                    BeginDrag(t.position.y); 
+                    break;
+                case TouchPhase.Moved:
+                case TouchPhase.Stationary:  // Thêm Stationary để reset velocity nếu giữ tay yên
+                    if (_isDragging) ApplyDrag(t.position.y);  
+                    break;
                 case TouchPhase.Ended:
-                case TouchPhase.Canceled:                EndDrag();               break;
+                case TouchPhase.Canceled:                
+                    EndDrag();               
+                    break;
             }
             return;
         }

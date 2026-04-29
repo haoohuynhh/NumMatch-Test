@@ -934,8 +934,6 @@ MonoBehaviour:
   linePrefab: {fileID: 5881502644541975046, guid: 6faae1a086e31864ab422a885fa62d0a, type: 3}
   lineDuration: 0.35
   zOffset: -0.1
-  fallbackColor: {r: 1, g: 1, b: 0.8, a: 1}
-  fallbackWidth: 0.08
 --- !u!1 &420627536
 GameObject:
   m_ObjectHideFlags: 0
@@ -2489,8 +2487,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1787220724}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: -7, z: 0}
-  m_LocalScale: {x: 10.932687, y: 5, z: 1}
+  m_LocalPosition: {x: 0, y: -8.5, z: 0}
+  m_LocalScale: {x: 10.932687, y: 5.9329996, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}

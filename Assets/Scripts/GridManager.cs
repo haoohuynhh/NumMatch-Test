@@ -26,7 +26,7 @@ public class GridManager : MonoBehaviour
 
     public void Start()
     {
-        Screen.SetResolution(1080, 1920, true);
+        
         addNumber = 6; // Reset lượt chọn khi bắt đầu
 
     
